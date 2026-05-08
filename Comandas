@@ -1,0 +1,60 @@
+COMANDAS GLOBALES 
+
+PRODUCTO | CANTIDAD VENDIDA | CANTIDAD PENDIENTE
+SELECT
+    ci.idpaquete,
+    ci.nombrepaquete AS producto,
+    SUM(CASE WHEN c.estado_pago = 'pagada' THEN ci.cantidad ELSE 0 END) AS cantidadpagada,
+    SUM(CASE WHEN c.estado_pago IN ('pendiente','cobrando') THEN ci.cantidad ELSE 0 END) AS cantidadpendiente
+FROM comandas c
+INNER JOIN comanda_item ci
+    ON ci.id_comanda = c.id_comanda
+WHERE c.creado_en >= '2026-05-01 00:00:00'
+  AND c.creado_en <  '2026-05-02 00:00:00'
+GROUP BY ci.idpaquete, ci.nombrepaquete
+ORDER BY ci.nombrepaquete;
+
+
+COMANDAS PAGADAS
+
+SELECT
+    c.id_comanda,
+    c.folio,
+    c.creado_en,
+    c.estado_pago,
+    ci.idpaquete,
+    ci.nombrepaquete AS producto,
+    ci.cantidad,
+    ci.costounitario,
+    ci.costototal
+FROM comandas c
+INNER JOIN comanda_item ci
+    ON ci.id_comanda = c.id_comanda
+WHERE c.creado_en >= '2026-05-01 00:00:00'
+  AND c.creado_en <  '2026-05-02 00:00:00'
+  AND c.estado_pago = 'pagada'
+
+ORDER BY  ci.nombrepaquete,c.creado_en, c.id_comanda;
+
+COMANDAS PENDIENTES
+
+SELECT
+    c.id_comanda,
+    c.folio,
+    c.creado_en,
+    c.estado_pago,
+    ci.idpaquete,
+    ci.nombrepaquete AS producto,
+    ci.cantidad,
+    ci.costounitario,
+    ci.costototal
+FROM comandas c
+INNER JOIN comanda_item ci
+    ON ci.id_comanda = c.id_comanda
+WHERE c.creado_en >= '2026-05-01 00:00:00'
+  AND c.creado_en <  '2026-05-02 00:00:00'
+  AND c.estado_pago = 'pendiente'
+
+ORDER BY  ci.nombrepaquete,c.creado_en, c.id_comanda;
+
+
