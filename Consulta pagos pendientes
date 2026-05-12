@@ -1,0 +1,113 @@
+SET @fecha_inicio = '2025-01-01';
+SET @fecha_fin    = '2026-05-11';
+
+SELECT *
+FROM (
+
+    /* =========================
+       1) TPV / COMANDAS
+       Incluye usuarios e invitados
+       Una línea por comanda
+       ========================= */
+    SELECT
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+        CONCAT('COMANDA #', c.folio) AS producto_debe,
+        'TPV' AS unidad_negocio,
+        DATE(c.creado_en) AS fecha_adeudo,
+        DATEDIFF(CURDATE(), DATE(c.creado_en)) AS dias_de_adeudo,
+        SUM(ci.costototal) AS monto_adeudo
+    FROM comandas c
+    INNER JOIN comanda_item ci
+        ON ci.id_comanda = c.id_comanda
+    LEFT JOIN usuarios u
+        ON u.idusuarios = c.id_usuario
+    LEFT JOIN bdcentralwon.usuarios_central uc
+        ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados i
+        ON i.id = c.id_invitado
+    WHERE c.estado_pago IN ('pendiente', 'cobrando')
+      AND c.creado_en >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND c.creado_en < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+      AND ci.estatus = 1
+    GROUP BY
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END,
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END,
+        c.id_comanda,
+        c.folio,
+        DATE(c.creado_en)
+
+    UNION ALL
+
+    /* =========================
+       2) RESERVAS
+       ========================= */
+    SELECT
+        CAST(uc.idusuarios AS CHAR) AS idcliente,
+        CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno) AS nombre_completo,
+        CONCAT('Reserva ', r.codigo_reserva) AS producto_debe,
+        'Reservas' AS unidad_negocio,
+        DATE(p.fechacreacion) AS fecha_adeudo,
+        DATEDIFF(CURDATE(), DATE(p.fechacreacion)) AS dias_de_adeudo,
+        p.monto AS monto_adeudo
+    FROM pagos p
+    INNER JOIN reservaciones r
+        ON r.id = p.id_reservacion
+    INNER JOIN usuarios u
+        ON u.idusuarios = p.idusuarios
+    INNER JOIN bdcentralwon.usuarios_central uc
+        ON uc.idusuarios = u.idusuarios
+    WHERE p.pagado = 0
+      AND p.estatus IN (0, 1)
+      AND p.tipo = 4
+      AND p.fechacreacion >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND p.fechacreacion < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+
+    UNION ALL
+
+    /* =========================
+       3) CLASES / ACADEMIAS / SERVICIOS
+       ========================= */
+    SELECT
+        CAST(uc.idusuarios AS CHAR) AS idcliente,
+        CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno) AS nombre_completo,
+        s.titulo AS producto_debe,
+        CASE
+            WHEN csn.nombre IS NOT NULL THEN csn.nombre
+            ELSE 'Clases / Academias'
+        END AS unidad_negocio,
+        DATE(p.fechacreacion) AS fecha_adeudo,
+        DATEDIFF(CURDATE(), DATE(p.fechacreacion)) AS dias_de_adeudo,
+        p.monto AS monto_adeudo
+    FROM pagos p
+    INNER JOIN servicios s
+        ON s.idservicio = p.idservicio
+    INNER JOIN usuarios u
+        ON u.idusuarios = p.idusuarios
+    INNER JOIN bdcentralwon.usuarios_central uc
+        ON uc.idusuarios = u.idusuarios
+    LEFT JOIN cps_unidad_negocio cun
+        ON cun.id = s.id_unidad_negocio
+    LEFT JOIN cps_subcategoria_negocio csn
+        ON csn.id = cun.id_subcategoria_negocio
+    WHERE p.pagado = 0
+      AND p.estatus IN (0, 1)
+      AND p.tipo = 1
+      AND p.fechacreacion >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND p.fechacreacion < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+
+) AS reporte_pendientes
+WHERE monto_adeudo > 0
+ORDER BY unidad_negocio, nombre_completo, fecha_adeudo;

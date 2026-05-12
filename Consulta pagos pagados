@@ -1,0 +1,160 @@
+SET @fecha_inicio = '2025-05-01';
+SET @fecha_fin    = '2026-05-12';
+
+SELECT *
+FROM (
+
+    /* =========================================================
+       1) TPV / COMANDAS PAGADAS
+       Una línea por comanda
+       Considera nota, detalle y descuentos
+       ========================================================= */
+    SELECT
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+        np.folio AS folio_notapago,
+        CONCAT('COMANDA #', c.folio) AS producto_pagado,
+        'TPV' AS unidad_negocio,
+        DATE(np.fecha) AS fecha_pago,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) AS monto_bruto,
+        COALESCE(SUM(nda.monto_descontado), 0) AS descuento_aplicado,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) - COALESCE(SUM(nda.monto_descontado), 0) AS monto_neto
+    FROM comandas c
+    INNER JOIN pagos p
+        ON p.idpago = c.id_pago
+    INNER JOIN notapago_descripcion nd
+        ON nd.idpago = p.idpago
+    INNER JOIN notapago np
+        ON np.idnotapago = nd.idnotapago
+    LEFT JOIN notapago_descuento_aplicado nda
+        ON nda.idnotapago_descripcion = nd.idnotapago_descripcion
+    LEFT JOIN usuarios u
+        ON u.idusuarios = c.id_usuario
+    LEFT JOIN bdcentralwon.usuarios_central uc
+        ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados i
+        ON i.id = c.id_invitado
+    WHERE c.estado_pago = 'pagada'
+      AND np.estatus = 1
+      AND np.fecha >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND np.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+    GROUP BY
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END,
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END,
+        np.folio,
+        c.id_comanda,
+        c.folio,
+        DATE(np.fecha)
+
+    UNION ALL
+
+    /* =========================================================
+       2) RESERVAS PAGADAS
+       Considera nota, detalle y descuentos
+       ========================================================= */
+    SELECT
+        CAST(uc.idusuarios AS CHAR) AS idcliente,
+        CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno) AS nombre_completo,
+        np.folio AS folio_notapago,
+        CONCAT('Reserva ', r.codigo_reserva) AS producto_pagado,
+        'Reservas' AS unidad_negocio,
+        DATE(np.fecha) AS fecha_pago,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) AS monto_bruto,
+        COALESCE(SUM(nda.monto_descontado), 0) AS descuento_aplicado,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) - COALESCE(SUM(nda.monto_descontado), 0) AS monto_neto
+    FROM pagos p
+    INNER JOIN reservaciones r
+        ON r.id = p.id_reservacion
+    INNER JOIN notapago_descripcion nd
+        ON nd.idpago = p.idpago
+    INNER JOIN notapago np
+        ON np.idnotapago = nd.idnotapago
+    LEFT JOIN notapago_descuento_aplicado nda
+        ON nda.idnotapago_descripcion = nd.idnotapago_descripcion
+    INNER JOIN usuarios u
+        ON u.idusuarios = p.idusuarios
+    INNER JOIN bdcentralwon.usuarios_central uc
+        ON uc.idusuarios = u.idusuarios
+    WHERE p.pagado = 1
+      AND p.estatus = 2
+      AND p.tipo = 4
+      AND np.estatus = 1
+      AND np.fecha >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND np.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+    GROUP BY
+        CAST(uc.idusuarios AS CHAR),
+        CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno),
+        np.folio,
+        r.id,
+        r.codigo_reserva,
+        DATE(np.fecha)
+
+    UNION ALL
+
+    /* =========================================================
+       3) CLASES / ACADEMIAS / SERVICIOS PAGADOS
+       Considera nota, detalle y descuentos
+       ========================================================= */
+    SELECT
+        CAST(uc.idusuarios AS CHAR) AS idcliente,
+        CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno) AS nombre_completo,
+        np.folio AS folio_notapago,
+        s.titulo AS producto_pagado,
+        CASE
+            WHEN csn.nombre IS NOT NULL THEN csn.nombre
+            ELSE 'Clases / Academias'
+        END AS unidad_negocio,
+        DATE(np.fecha) AS fecha_pago,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) AS monto_bruto,
+        COALESCE(SUM(nda.monto_descontado), 0) AS descuento_aplicado,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) - COALESCE(SUM(nda.monto_descontado), 0) AS monto_neto
+    FROM pagos p
+    INNER JOIN servicios s
+        ON s.idservicio = p.idservicio
+    INNER JOIN notapago_descripcion nd
+        ON nd.idpago = p.idpago
+    INNER JOIN notapago np
+        ON np.idnotapago = nd.idnotapago
+    LEFT JOIN notapago_descuento_aplicado nda
+        ON nda.idnotapago_descripcion = nd.idnotapago_descripcion
+    INNER JOIN usuarios u
+        ON u.idusuarios = p.idusuarios
+    INNER JOIN bdcentralwon.usuarios_central uc
+        ON uc.idusuarios = u.idusuarios
+    LEFT JOIN cps_unidad_negocio cun
+        ON cun.id = s.id_unidad_negocio
+    LEFT JOIN cps_subcategoria_negocio csn
+        ON csn.id = cun.id_subcategoria_negocio
+    WHERE p.pagado = 1
+      AND p.estatus = 2
+      AND p.tipo = 1
+      AND np.estatus = 1
+      AND np.fecha >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND np.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+    GROUP BY
+        CAST(uc.idusuarios AS CHAR),
+        CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno),
+        np.folio,
+        s.idservicio,
+        s.titulo,
+        CASE
+            WHEN csn.nombre IS NOT NULL THEN csn.nombre
+            ELSE 'Clases / Academias'
+        END,
+        DATE(np.fecha)
+
+) AS reporte_pagados
+WHERE monto_neto > 0
+ORDER BY unidad_negocio, nombre_completo, fecha_pago;
