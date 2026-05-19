@@ -1,0 +1,23 @@
+SELECT DISTINCT
+    um.idusuarios,
+    CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno) AS nombre_completo,
+    m.titulo AS membresia_titulo,
+    um.idmembresia,
+    um.fechaexpiracion
+FROM usuarios_membresia um
+INNER JOIN membresia m ON m.idmembresia = um.idmembresia
+INNER JOIN bdcentralwon.usuarios_central uc ON uc.idusuarios = um.idusuarios
+WHERE LOWER(m.titulo) LIKE '%staff%'
+  AND (um.idusuarios, um.fechaexpiracion, um.idmembresia) IN (
+    SELECT
+      um2.idusuarios,
+      MAX(um2.fechaexpiracion) AS fechaexpiracion,
+      MAX(um2.idmembresia) AS idmembresia
+    FROM usuarios_membresia um2
+    INNER JOIN membresia m2 ON m2.idmembresia = um2.idmembresia
+    WHERE LOWER(m2.titulo) LIKE '%staff%'
+    GROUP BY um2.idusuarios
+  )
+  AND (um.fechaexpiracion IS NULL OR um.fechaexpiracion >= CURDATE())
+  AND uc.estatus = 1
+ORDER BY nombre_completo;
