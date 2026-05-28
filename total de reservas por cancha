@@ -1,0 +1,17 @@
+SELECT
+    DATE_FORMAT(notapago_descripcion.fecha, '%Y-%m') AS periodo,   -- '2026-01', '2026-02', etc.
+    z.nombre AS nombre_zona,
+    COUNT(DISTINCT reservaciones.id) AS total_reservas,
+    SUM(notapago_descripcion.monto) AS monto_total_pagado
+FROM reservaciones
+INNER JOIN pagos ON pagos.id_reservacion = reservaciones.id
+INNER JOIN notapago_descripcion ON pagos.idpago = notapago_descripcion.idpago
+INNER JOIN notapago ON notapago.idnotapago = notapago_descripcion.idnotapago
+INNER JOIN zonas z ON z.idzona = reservaciones.idzona
+WHERE notapago_descripcion.fecha >= '2026-01-01 00:00:00'
+  AND notapago_descripcion.fecha < '2026-06-01 00:00:00'
+  AND notapago.estatus = 1
+  AND pagos.pagado = 1
+  AND pagos.estatus = 2
+GROUP BY periodo, z.nombre
+ORDER BY periodo, z.nombre;
