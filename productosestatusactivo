@@ -1,0 +1,18 @@
+SELECT
+		pi.idproductoinv,
+    pi.nombreinv AS producto,
+    rp.cantidad_fija AS cantidad,
+    pi.costo AS costo_unitario,
+   p.preciosugerido,
+	 cat.nombre as categoria
+FROM paquetes p
+INNER JOIN paquete_reglas pr
+    ON pr.paquete_id = p.idpaquete
+INNER JOIN regla_productos rp
+    ON rp.paqueteregla_id = pr.id
+INNER JOIN productosinv pi
+    ON pi.idproductoinv = rp.producto_id
+inner join categoriapaquete as cat 
+on cat.idcategoriapaquete=p.idcategoriapaquete
+WHERE pi.estatus=1
+ORDER BY p.nombrepaquete, pr.id, pi.nombreinv;
