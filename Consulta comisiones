@@ -1,0 +1,548 @@
+SELECT
+    reporte.idalumno,
+    reporte.alumno,
+    reporte.hrs,
+    reporte.fecha_pago,
+    reporte.cobrado,
+    reporte.comisiongenerada,
+    reporte.comisionpagada,
+    reporte.a_pagar
+FROM
+(
+    SELECT
+        base.idalumno,
+        base.alumno,
+        base.hrs,
+        base.fecha_pago,
+        base.cobrado,
+        base.comisiongenerada,
+        base.comisionpagada,
+        base.comisiongenerada - base.comisionpagada AS a_pagar,
+        1 AS orden
+    FROM
+    (
+        SELECT
+            p.idusuarios AS idalumno,
+
+            CONCAT(
+                COALESCE(alumno_central.nombre, ''),
+                ' ',
+                COALESCE(alumno_central.paterno, ''),
+                ' ',
+                COALESCE(alumno_central.materno, '')
+            ) AS alumno,
+
+            COALESCE(horarios.cantidadhorarios, 0) AS hrs,
+
+            DATE(np.fecha) AS fecha_pago,
+
+            p.monto AS cobrado,
+
+            ROUND(
+                CASE
+                    WHEN COALESCE(uc.tipopago, tc.tipocomision) = 0 THEN
+                        p.monto * COALESCE(uc.monto, tc.monto, 0) / 100
+
+                    WHEN COALESCE(uc.tipopago, tc.tipocomision) = 1 THEN
+                        COALESCE(uc.monto, tc.monto, 0)
+                        * COALESCE(horarios.cantidadhorarios, 0)
+                        / NULLIF(COALESCE(participantes.cantidadparticipantes, 0), 0)
+
+                    WHEN COALESCE(uc.tipopago, tc.tipocomision) = 2 THEN
+                        COALESCE(horarios.cantidadhorarios, 0)
+                        * COALESCE(uc.monto, tc.monto, 0)
+
+                    ELSE 0
+                END,
+                2
+            ) AS comisiongenerada,
+
+            COALESCE(pc.comisionpagada, 0) AS comisionpagada
+
+        FROM notapago_descripcion npd
+
+        INNER JOIN pagos p
+            ON npd.idpago = p.idpago
+
+        INNER JOIN notapago np
+            ON np.idnotapago = npd.idnotapago
+
+        INNER JOIN servicios s
+            ON s.idservicio = p.idservicio
+
+        INNER JOIN bdcentralwon.usuarios_central alumno_central
+            ON alumno_central.idusuarios = p.idusuarios
+
+        INNER JOIN usuarios_servicios coach_us
+            ON coach_us.idservicio = p.idservicio
+            AND coach_us.cancelacion = 0
+            AND coach_us.idusuarios = 2044
+
+        INNER JOIN usuarios ucoach
+            ON ucoach.idusuarios = coach_us.idusuarios
+            AND ucoach.id_tipo_coach > 0
+
+        LEFT JOIN usuarioscoachs uc
+            ON uc.idusuarios_servicios = coach_us.idusuarios_servicios
+
+        LEFT JOIN bdcentralwon.usuarios_central coach_central
+            ON coach_central.idusuarios = coach_us.idusuarios
+
+        LEFT JOIN tipocoach tc
+            ON coach_central.idtipocoach = tc.idtipocoach
+
+        LEFT JOIN (
+            SELECT
+                idservicio,
+                COUNT(*) AS cantidadhorarios
+            FROM horariosservicio
+            GROUP BY idservicio
+        ) horarios
+            ON horarios.idservicio = p.idservicio
+
+        LEFT JOIN (
+            SELECT
+                usv.idservicio,
+                COUNT(DISTINCT usv.idusuarios) AS cantidadparticipantes
+            FROM usuarios_servicios usv
+            LEFT JOIN usuarios u
+                ON u.idusuarios = usv.idusuarios
+            WHERE
+                usv.cancelacion = 0
+                AND (
+                    u.id_tipo_coach IS NULL
+                    OR u.id_tipo_coach = 0
+                )
+            GROUP BY usv.idservicio
+        ) participantes
+            ON participantes.idservicio = p.idservicio
+
+        LEFT JOIN (
+            SELECT
+                idpago,
+                idusuarios AS idcoach,
+                SUM(COALESCE(monto, 0)) AS comisionpagada
+            FROM pagoscoach
+            WHERE
+                idusuarios = 2044
+                AND (
+                    pagado = 1
+                    OR estatus = 2
+                )
+            GROUP BY
+                idpago,
+                idusuarios
+        ) pc
+            ON pc.idpago = p.idpago
+            AND pc.idcoach = coach_us.idusuarios
+
+        WHERE
+            p.pagado = 1
+            AND np.estatus = 1
+            AND np.folio IN (
+                'P-0A-016-726',
+                'P-0A-017-124',
+                'P-0A-017-473',
+                'P-0A-017-389',
+                'P-0A-016-843',
+                'P-0A-017-504',
+                'P-0A-017-677',
+                'P-0A-017-713',
+                'P-0A-019-029',
+                'P-0A-019-035',
+                'P-0A-018-952',
+                'P-0A-018-050',
+                'P-0A-018-037',
+                'P-0A-017-864',
+                'P-0A-017-149',
+                'P-0A-019-040',
+                'P-0A-017-533',
+                'P-0A-018-937',
+                'P-0A-018-754',
+                'P-0A-018-765',
+                'P-0A-018-759',
+                'P-0A-017-564',
+                'P-0A-018-598',
+                'P-0A-018-599',
+                'P-0A-020-499',
+                'P-0A-018-760',
+                'P-0A-018-259',
+                'P-0A-018-611',
+                'P-0A-019-388',
+                'P-0A-018-753',
+                'P-0A-018-612',
+                'P-0A-019-485',
+                'P-0A-022-628',
+                'P-0A-020-084',
+                'P-0A-021-013',
+                'P-0A-022-964',
+                'P-0A-022-644',
+                'P-0A-020-574',
+                'P-0A-020-094',
+                'P-0A-020-705',
+                'P-0A-020-576',
+                'P-0A-020-077',
+                'P-0A-021-529',
+                'P-0A-022-323',
+                'P-0A-023-044',
+                'P-0A-020-902',
+                'P-0A-020-603',
+                'P-0A-021-564',
+                'P-0A-022-121',
+                'P-0A-022-399',
+                'P-0A-022-160',
+                'P-0A-025-930',
+                'P-0A-025-494',
+                'P-0A-022-656',
+                'P-0A-022-237',
+                'P-0A-023-261',
+                'P-0A-025-163',
+                'P-0A-023-388',
+                'P-0A-025-398',
+                'P-0A-025-391',
+                'P-0A-025-449',
+                'P-0A-025-879',
+                'P-0A-025-880',
+                'P-0A-023-284',
+                'P-0A-022-878',
+                'P-0A-022-994',
+                'P-0A-025-216',
+                'P-0A-025-918',
+                'P-0A-025-706',
+                'P-0A-025-792',
+                'P-0A-025-795',
+                'P-0A-023-176',
+                'P-0A-023-324',
+                'P-0A-023-317',
+                'P-0A-026-433',
+                'P-0A-026-432',
+                'P-0A-023-833',
+                'P-0A-023-641',
+                'P-0A-025-500',
+                'P-0A-024-174',
+                'P-0A-025-668',
+                'P-0A-023-917',
+                'P-0A-025-306',
+                'P-0A-024-033',
+                'P-0A-025-666',
+                'P-0A-025-739',
+                'P-0A-025-704',
+                'P-0A-025-767',
+                'P-0A-026-527',
+                'P-0A-025-667',
+                'P-0A-025-220',
+                'P-0A-026-508',
+                'P-0A-027-369',
+                'P-0A-025-998',
+                'P-0A-026-438',
+                'P-0A-027-665',
+                'P-0A-027-509',
+                'P-0A-027-294',
+                'P-0A-025-782',
+                'P-0A-026-002',
+                'P-0A-027-948',
+                'P-0A-027-469',
+                'P-0A-027-711',
+                'P-0A-027-710',
+                'P-0A-027-829',
+                'P-0A-027-830',
+                'P-0A-028-324',
+                'P-0A-026-403',
+                'P-0A-027-671',
+                'P-0A-027-670',
+                'P-0A-027-939',
+                'P-0A-027-672',
+                'P-0A-027-569',
+                'P-0A-027-492',
+                'P-0A-027-476',
+                'P-0A-026-756',
+                'P-0A-028-061',
+                'P-0A-027-026',
+                'P-0A-027-490',
+                'P-0A-028-531',
+                'P-0A-028-616',
+                'P-0A-027-754',
+                'P-0A-028-033',
+                'P-0A-027-654',
+                'P-0A-027-494',
+                'P-0A-027-622',
+                'P-0A-027-787',
+                'P-0A-027-472',
+                'P-0A-028-372',
+                'P-0A-028-060',
+                'P-0A-028-446',
+                'P-0A-029-035',
+                'P-0A-029-034',
+                'P-0A-027-993',
+                'P-0A-028-040',
+                'P-0A-028-559',
+                'P-0A-028-558',
+                'P-0A-028-536',
+                'P-0A-028-481'
+            )
+    ) AS base
+
+    UNION ALL
+
+    SELECT
+        NULL AS idalumno,
+        'TOTAL' AS alumno,
+        SUM(base.hrs) AS hrs,
+        NULL AS fecha_pago,
+        SUM(base.cobrado) AS cobrado,
+        SUM(base.comisiongenerada) AS comisiongenerada,
+        SUM(base.comisionpagada) AS comisionpagada,
+        SUM(base.comisiongenerada - base.comisionpagada) AS a_pagar,
+        2 AS orden
+    FROM
+    (
+        SELECT
+            p.idusuarios AS idalumno,
+            COALESCE(horarios.cantidadhorarios, 0) AS hrs,
+            p.monto AS cobrado,
+
+            ROUND(
+                CASE
+                    WHEN COALESCE(uc.tipopago, tc.tipocomision) = 0 THEN
+                        p.monto * COALESCE(uc.monto, tc.monto, 0) / 100
+
+                    WHEN COALESCE(uc.tipopago, tc.tipocomision) = 1 THEN
+                        COALESCE(uc.monto, tc.monto, 0)
+                        * COALESCE(horarios.cantidadhorarios, 0)
+                        / NULLIF(COALESCE(participantes.cantidadparticipantes, 0), 0)
+
+                    WHEN COALESCE(uc.tipopago, tc.tipocomision) = 2 THEN
+                        COALESCE(horarios.cantidadhorarios, 0)
+                        * COALESCE(uc.monto, tc.monto, 0)
+
+                    ELSE 0
+                END,
+                2
+            ) AS comisiongenerada,
+
+            COALESCE(pc.comisionpagada, 0) AS comisionpagada
+
+        FROM notapago_descripcion npd
+
+        INNER JOIN pagos p
+            ON npd.idpago = p.idpago
+
+        INNER JOIN notapago np
+            ON np.idnotapago = npd.idnotapago
+
+        INNER JOIN servicios s
+            ON s.idservicio = p.idservicio
+
+        INNER JOIN usuarios_servicios coach_us
+            ON coach_us.idservicio = p.idservicio
+            AND coach_us.cancelacion = 0
+            AND coach_us.idusuarios = 2044
+
+        INNER JOIN usuarios ucoach
+            ON ucoach.idusuarios = coach_us.idusuarios
+            AND ucoach.id_tipo_coach > 0
+
+        LEFT JOIN usuarioscoachs uc
+            ON uc.idusuarios_servicios = coach_us.idusuarios_servicios
+
+        LEFT JOIN bdcentralwon.usuarios_central coach_central
+            ON coach_central.idusuarios = coach_us.idusuarios
+
+        LEFT JOIN tipocoach tc
+            ON coach_central.idtipocoach = tc.idtipocoach
+
+        LEFT JOIN (
+            SELECT
+                idservicio,
+                COUNT(*) AS cantidadhorarios
+            FROM horariosservicio
+            GROUP BY idservicio
+        ) horarios
+            ON horarios.idservicio = p.idservicio
+
+        LEFT JOIN (
+            SELECT
+                usv.idservicio,
+                COUNT(DISTINCT usv.idusuarios) AS cantidadparticipantes
+            FROM usuarios_servicios usv
+            LEFT JOIN usuarios u
+                ON u.idusuarios = usv.idusuarios
+            WHERE
+                usv.cancelacion = 0
+                AND (
+                    u.id_tipo_coach IS NULL
+                    OR u.id_tipo_coach = 0
+                )
+            GROUP BY usv.idservicio
+        ) participantes
+            ON participantes.idservicio = p.idservicio
+
+        LEFT JOIN (
+            SELECT
+                idpago,
+                idusuarios AS idcoach,
+                SUM(COALESCE(monto, 0)) AS comisionpagada
+            FROM pagoscoach
+            WHERE
+                idusuarios = 2044
+                AND (
+                    pagado = 1
+                    OR estatus = 2
+                )
+            GROUP BY
+                idpago,
+                idusuarios
+        ) pc
+            ON pc.idpago = p.idpago
+            AND pc.idcoach = coach_us.idusuarios
+
+        WHERE
+            p.pagado = 1
+            AND np.estatus = 1
+            AND np.folio IN (
+                'P-0A-016-726',
+                'P-0A-017-124',
+                'P-0A-017-473',
+                'P-0A-017-389',
+                'P-0A-016-843',
+                'P-0A-017-504',
+                'P-0A-017-677',
+                'P-0A-017-713',
+                'P-0A-019-029',
+                'P-0A-019-035',
+                'P-0A-018-952',
+                'P-0A-018-050',
+                'P-0A-018-037',
+                'P-0A-017-864',
+                'P-0A-017-149',
+                'P-0A-019-040',
+                'P-0A-017-533',
+                'P-0A-018-937',
+                'P-0A-018-754',
+                'P-0A-018-765',
+                'P-0A-018-759',
+                'P-0A-017-564',
+                'P-0A-018-598',
+                'P-0A-018-599',
+                'P-0A-020-499',
+                'P-0A-018-760',
+                'P-0A-018-259',
+                'P-0A-018-611',
+                'P-0A-019-388',
+                'P-0A-018-753',
+                'P-0A-018-612',
+                'P-0A-019-485',
+                'P-0A-022-628',
+                'P-0A-020-084',
+                'P-0A-021-013',
+                'P-0A-022-964',
+                'P-0A-022-644',
+                'P-0A-020-574',
+                'P-0A-020-094',
+                'P-0A-020-705',
+                'P-0A-020-576',
+                'P-0A-020-077',
+                'P-0A-021-529',
+                'P-0A-022-323',
+                'P-0A-023-044',
+                'P-0A-020-902',
+                'P-0A-020-603',
+                'P-0A-021-564',
+                'P-0A-022-121',
+                'P-0A-022-399',
+                'P-0A-022-160',
+                'P-0A-025-930',
+                'P-0A-025-494',
+                'P-0A-022-656',
+                'P-0A-022-237',
+                'P-0A-023-261',
+                'P-0A-025-163',
+                'P-0A-023-388',
+                'P-0A-025-398',
+                'P-0A-025-391',
+                'P-0A-025-449',
+                'P-0A-025-879',
+                'P-0A-025-880',
+                'P-0A-023-284',
+                'P-0A-022-878',
+                'P-0A-022-994',
+                'P-0A-025-216',
+                'P-0A-025-918',
+                'P-0A-025-706',
+                'P-0A-025-792',
+                'P-0A-025-795',
+                'P-0A-023-176',
+                'P-0A-023-324',
+                'P-0A-023-317',
+                'P-0A-026-433',
+                'P-0A-026-432',
+                'P-0A-023-833',
+                'P-0A-023-641',
+                'P-0A-025-500',
+                'P-0A-024-174',
+                'P-0A-025-668',
+                'P-0A-023-917',
+                'P-0A-025-306',
+                'P-0A-024-033',
+                'P-0A-025-666',
+                'P-0A-025-739',
+                'P-0A-025-704',
+                'P-0A-025-767',
+                'P-0A-026-527',
+                'P-0A-025-667',
+                'P-0A-025-220',
+                'P-0A-026-508',
+                'P-0A-027-369',
+                'P-0A-025-998',
+                'P-0A-026-438',
+                'P-0A-027-665',
+                'P-0A-027-509',
+                'P-0A-027-294',
+                'P-0A-025-782',
+                'P-0A-026-002',
+                'P-0A-027-948',
+                'P-0A-027-469',
+                'P-0A-027-711',
+                'P-0A-027-710',
+                'P-0A-027-829',
+                'P-0A-027-830',
+                'P-0A-028-324',
+                'P-0A-026-403',
+                'P-0A-027-671',
+                'P-0A-027-670',
+                'P-0A-027-939',
+                'P-0A-027-672',
+                'P-0A-027-569',
+                'P-0A-027-492',
+                'P-0A-027-476',
+                'P-0A-026-756',
+                'P-0A-028-061',
+                'P-0A-027-026',
+                'P-0A-027-490',
+                'P-0A-028-531',
+                'P-0A-028-616',
+                'P-0A-027-754',
+                'P-0A-028-033',
+                'P-0A-027-654',
+                'P-0A-027-494',
+                'P-0A-027-622',
+                'P-0A-027-787',
+                'P-0A-027-472',
+                'P-0A-028-372',
+                'P-0A-028-060',
+                'P-0A-028-446',
+                'P-0A-029-035',
+                'P-0A-029-034',
+                'P-0A-027-993',
+                'P-0A-028-040',
+                'P-0A-028-559',
+                'P-0A-028-558',
+                'P-0A-028-536',
+                'P-0A-028-481'
+            )
+    ) AS base
+) AS reporte
+ORDER BY
+    reporte.orden,
+    reporte.fecha_pago,
+    reporte.alumno;
