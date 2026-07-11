@@ -65,7 +65,10 @@ FROM (
             ELSE 'Reservas'
         END AS unidad_negocio,
         NULL AS fecha_adeudo,
-        DATE(np.fecha) AS fecha_pago,
+        CASE
+            WHEN p.tipo = 5 THEN DATE(r.fecha)
+            ELSE DATE(np.fecha)
+        END AS fecha_pago,
         SUM(CAST(nd.monto AS DECIMAL(12,2))) AS monto_bruto,
         COALESCE(SUM(nda.monto_descontado), 0) AS descuento_aplicado,
         SUM(CAST(nd.monto AS DECIMAL(12,2))) - COALESCE(SUM(nda.monto_descontado), 0) AS monto_neto
@@ -81,8 +84,19 @@ FROM (
       AND p.estatus = 2
       AND p.tipo IN (4, 5)
       AND np.estatus = 1
-      AND np.fecha >= CONCAT(@fecha_inicio, ' 00:00:00')
-      AND np.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+      AND (
+            (
+                p.tipo = 4
+                AND np.fecha >= CONCAT(@fecha_inicio, ' 00:00:00')
+                AND np.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+            )
+            OR
+            (
+                p.tipo = 5
+                AND r.fecha >= @fecha_inicio
+                AND r.fecha <= @fecha_fin
+            )
+      )
     GROUP BY
         CASE
             WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL THEN CONCAT('INV-', COALESCE(p.id_invitado, np.id_invitado))
@@ -96,7 +110,10 @@ FROM (
         r.id,
         r.codigo_reserva,
         p.tipo,
-        DATE(np.fecha)
+        CASE
+            WHEN p.tipo = 5 THEN DATE(r.fecha)
+            ELSE DATE(np.fecha)
+        END
 
     UNION ALL
 
@@ -213,7 +230,10 @@ FROM (
             WHEN p.tipo = 5 THEN 'Reservas Autoplaza'
             ELSE 'Reservas'
         END AS unidad_negocio,
-        DATE(p.fechacreacion) AS fecha_adeudo,
+        CASE
+            WHEN p.tipo = 5 THEN DATE(r.fecha)
+            ELSE DATE(p.fechacreacion)
+        END AS fecha_adeudo,
         NULL AS fecha_pago,
         p.monto AS monto_bruto,
         NULL AS descuento_aplicado,
@@ -226,8 +246,19 @@ FROM (
     WHERE p.pagado = 0
       AND p.estatus IN (0, 1)
       AND p.tipo IN (4, 5)
-      AND p.fechacreacion >= CONCAT(@fecha_inicio, ' 00:00:00')
-      AND p.fechacreacion < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+      AND (
+            (
+                p.tipo = 4
+                AND p.fechacreacion >= CONCAT(@fecha_inicio, ' 00:00:00')
+                AND p.fechacreacion < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+            )
+            OR
+            (
+                p.tipo = 5
+                AND r.fecha >= @fecha_inicio
+                AND r.fecha <= @fecha_fin
+            )
+      )
 
     UNION ALL
 
