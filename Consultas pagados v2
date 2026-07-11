@@ -1,0 +1,269 @@
+SET @fecha_inicio = '2026-07-10';
+SET @fecha_fin    = '2026-07-10';
+
+SELECT *
+FROM (
+    /* =========================
+       1) PAGADOS
+       ========================= */
+
+    SELECT
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+        np.folio AS folio_notapago,
+        CONCAT('COMANDA #', c.folio) AS producto,
+        'TPV' AS unidad_negocio,
+        NULL AS fecha_adeudo,
+        DATE(np.fecha) AS fecha_pago,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) AS monto_bruto,
+        COALESCE(SUM(nda.monto_descontado), 0) AS descuento_aplicado,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) - COALESCE(SUM(nda.monto_descontado), 0) AS monto_neto
+    FROM comandas c
+    INNER JOIN pagos p ON p.idpago = c.id_pago
+    INNER JOIN notapago_descripcion nd ON nd.idpago = p.idpago
+    INNER JOIN notapago np ON np.idnotapago = nd.idnotapago
+    LEFT JOIN notapago_descuento_aplicado nda ON nda.idnotapago_descripcion = nd.idnotapago_descripcion
+    LEFT JOIN usuarios u ON u.idusuarios = c.id_usuario
+    LEFT JOIN bdcentralwon.usuarios_central uc ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados i ON i.id = c.id_invitado
+    WHERE c.estado_pago = 'pagada'
+      AND np.estatus = 1
+      AND np.fecha >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND np.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+    GROUP BY
+        CASE WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id) ELSE CAST(uc.idusuarios AS CHAR) END,
+        CASE WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)') ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno) END,
+        np.folio,
+        c.id_comanda,
+        c.folio,
+        DATE(np.fecha)
+
+    UNION ALL
+
+    SELECT
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL THEN CONCAT('INV-', COALESCE(p.id_invitado, np.id_invitado))
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+        np.folio AS folio_notapago,
+        CASE
+            WHEN p.tipo = 5 THEN CONCAT('Reserva Autoplaza ', r.codigo_reserva)
+            ELSE CONCAT('Reserva ', r.codigo_reserva)
+        END AS producto,
+        CASE
+            WHEN p.tipo = 5 THEN 'Reservas Autoplaza'
+            ELSE 'Reservas'
+        END AS unidad_negocio,
+        NULL AS fecha_adeudo,
+        DATE(np.fecha) AS fecha_pago,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) AS monto_bruto,
+        COALESCE(SUM(nda.monto_descontado), 0) AS descuento_aplicado,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) - COALESCE(SUM(nda.monto_descontado), 0) AS monto_neto
+    FROM pagos p
+    INNER JOIN reservaciones r ON r.id = p.id_reservacion
+    INNER JOIN notapago_descripcion nd ON nd.idpago = p.idpago
+    INNER JOIN notapago np ON np.idnotapago = nd.idnotapago
+    LEFT JOIN notapago_descuento_aplicado nda ON nda.idnotapago_descripcion = nd.idnotapago_descripcion
+    LEFT JOIN usuarios u ON u.idusuarios = p.idusuarios
+    LEFT JOIN bdcentralwon.usuarios_central uc ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados i ON i.id = COALESCE(p.id_invitado, np.id_invitado)
+    WHERE p.pagado = 1
+      AND p.estatus = 2
+      AND p.tipo IN (4, 5)
+      AND np.estatus = 1
+      AND np.fecha >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND np.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+    GROUP BY
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL THEN CONCAT('INV-', COALESCE(p.id_invitado, np.id_invitado))
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END,
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END,
+        np.folio,
+        r.id,
+        r.codigo_reserva,
+        p.tipo,
+        DATE(np.fecha)
+
+    UNION ALL
+
+    SELECT
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL THEN CONCAT('INV-', COALESCE(p.id_invitado, np.id_invitado))
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+        np.folio AS folio_notapago,
+        s.titulo AS producto,
+        CASE
+            WHEN csn.nombre IS NOT NULL THEN csn.nombre
+            ELSE 'Clases / Academias'
+        END AS unidad_negocio,
+        NULL AS fecha_adeudo,
+        DATE(np.fecha) AS fecha_pago,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) AS monto_bruto,
+        COALESCE(SUM(nda.monto_descontado), 0) AS descuento_aplicado,
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) - COALESCE(SUM(nda.monto_descontado), 0) AS monto_neto
+    FROM pagos p
+    INNER JOIN servicios s ON s.idservicio = p.idservicio
+    INNER JOIN notapago_descripcion nd ON nd.idpago = p.idpago
+    INNER JOIN notapago np ON np.idnotapago = nd.idnotapago
+    LEFT JOIN notapago_descuento_aplicado nda ON nda.idnotapago_descripcion = nd.idnotapago_descripcion
+    LEFT JOIN usuarios u ON u.idusuarios = p.idusuarios
+    LEFT JOIN bdcentralwon.usuarios_central uc ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados i ON i.id = COALESCE(p.id_invitado, np.id_invitado)
+    LEFT JOIN cps_unidad_negocio cun ON cun.id = s.id_unidad_negocio
+    LEFT JOIN cps_subcategoria_negocio csn ON csn.id = cun.id_subcategoria_negocio
+    WHERE p.pagado = 1
+      AND p.estatus = 2
+      AND p.tipo = 1
+      AND np.estatus = 1
+      AND np.fecha >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND np.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+    GROUP BY
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL THEN CONCAT('INV-', COALESCE(p.id_invitado, np.id_invitado))
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END,
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END,
+        np.folio,
+        s.idservicio,
+        s.titulo,
+        CASE
+            WHEN csn.nombre IS NOT NULL THEN csn.nombre
+            ELSE 'Clases / Academias'
+        END,
+        DATE(np.fecha)
+
+    UNION ALL
+
+    /* =========================
+       2) PENDIENTES
+       ========================= */
+
+    SELECT
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+        NULL AS folio_notapago,
+        CONCAT('COMANDA #', c.folio) AS producto,
+        'TPV' AS unidad_negocio,
+        DATE(c.creado_en) AS fecha_adeudo,
+        NULL AS fecha_pago,
+        SUM(ci.costototal) AS monto_bruto,
+        NULL AS descuento_aplicado,
+        NULL AS monto_neto
+    FROM comandas c
+    INNER JOIN comanda_item ci ON ci.id_comanda = c.id_comanda
+    LEFT JOIN usuarios u ON u.idusuarios = c.id_usuario
+    LEFT JOIN bdcentralwon.usuarios_central uc ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados i ON i.id = c.id_invitado
+    WHERE c.estado_pago IN ('pendiente', 'cobrando')
+      AND c.creado_en >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND c.creado_en < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+      AND ci.estatus = 1
+    GROUP BY
+        CASE WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id) ELSE CAST(uc.idusuarios AS CHAR) END,
+        CASE WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)') ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno) END,
+        c.id_comanda,
+        c.folio,
+        DATE(c.creado_en)
+
+    UNION ALL
+
+    SELECT
+        CASE
+            WHEN p.id_invitado IS NOT NULL THEN CONCAT('INV-', p.id_invitado)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+        CASE
+            WHEN p.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+        NULL AS folio_notapago,
+        CASE
+            WHEN p.tipo = 5 THEN CONCAT('Reserva Autoplaza ', r.codigo_reserva)
+            ELSE CONCAT('Reserva ', r.codigo_reserva)
+        END AS producto,
+        CASE
+            WHEN p.tipo = 5 THEN 'Reservas Autoplaza'
+            ELSE 'Reservas'
+        END AS unidad_negocio,
+        DATE(p.fechacreacion) AS fecha_adeudo,
+        NULL AS fecha_pago,
+        p.monto AS monto_bruto,
+        NULL AS descuento_aplicado,
+        NULL AS monto_neto
+    FROM pagos p
+    INNER JOIN reservaciones r ON r.id = p.id_reservacion
+    LEFT JOIN usuarios u ON u.idusuarios = p.idusuarios
+    LEFT JOIN bdcentralwon.usuarios_central uc ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados i ON i.id = p.id_invitado
+    WHERE p.pagado = 0
+      AND p.estatus IN (0, 1)
+      AND p.tipo IN (4, 5)
+      AND p.fechacreacion >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND p.fechacreacion < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+
+    UNION ALL
+
+    SELECT
+        CASE
+            WHEN p.id_invitado IS NOT NULL THEN CONCAT('INV-', p.id_invitado)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+        CASE
+            WHEN p.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+        NULL AS folio_notapago,
+        s.titulo AS producto,
+        CASE
+            WHEN csn.nombre IS NOT NULL THEN csn.nombre
+            ELSE 'Clases / Academias'
+        END AS unidad_negocio,
+        DATE(p.fechacreacion) AS fecha_adeudo,
+        NULL AS fecha_pago,
+        p.monto AS monto_bruto,
+        NULL AS descuento_aplicado,
+        NULL AS monto_neto
+    FROM pagos p
+    INNER JOIN servicios s ON s.idservicio = p.idservicio
+    LEFT JOIN usuarios u ON u.idusuarios = p.idusuarios
+    LEFT JOIN bdcentralwon.usuarios_central uc ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados i ON i.id = p.id_invitado
+    LEFT JOIN cps_unidad_negocio cun ON cun.id = s.id_unidad_negocio
+    LEFT JOIN cps_subcategoria_negocio csn ON csn.id = cun.id_subcategoria_negocio
+    WHERE p.pagado = 0
+      AND p.estatus IN (0, 1)
+      AND p.tipo = 1
+      AND p.fechacreacion >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND p.fechacreacion < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+
+) AS reporte_movimientos
+WHERE monto_bruto > 0 OR monto_neto > 0
+ORDER BY unidad_negocio, nombre_completo, fecha_pago, fecha_adeudo;
