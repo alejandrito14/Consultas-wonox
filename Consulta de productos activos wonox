@@ -1,0 +1,122 @@
+SELECT
+    idproductoinv,
+    producto,
+    categoria_negocio,
+    subcategoria_negocio,
+    unidad_negocio,
+    subunidad_negocio
+FROM (
+    SELECT
+        1 AS orden_grupo,
+        base.orden_item,
+        NULL AS orden_paquete,
+        NULL AS orden_regla,
+        NULL AS orden_producto,
+        NULL AS idproductoinv,
+        base.producto_mostrar AS producto,
+        CONVERT(catneg.nombre USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS categoria_negocio,
+        CONVERT(subcat.nombre USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS subcategoria_negocio,
+        CONVERT(unidad.nombre USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS unidad_negocio,
+        CONVERT(subunidad.nombre USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS subunidad_negocio
+    FROM (
+        SELECT
+            1 AS orden_item,
+            CONVERT('Renta de canchas' USING utf8mb4)
+                COLLATE utf8mb4_unicode_ci AS nombre_buscar,
+            CONVERT('Reservas' USING utf8mb4)
+                COLLATE utf8mb4_unicode_ci AS producto_mostrar
+
+        UNION ALL
+
+        SELECT
+            2,
+            CONVERT('Clases' USING utf8mb4)
+                COLLATE utf8mb4_unicode_ci,
+            CONVERT('Clases' USING utf8mb4)
+                COLLATE utf8mb4_unicode_ci
+
+        UNION ALL
+
+        SELECT
+            3,
+            CONVERT('Academias' USING utf8mb4)
+                COLLATE utf8mb4_unicode_ci,
+            CONVERT('Academias' USING utf8mb4)
+                COLLATE utf8mb4_unicode_ci
+    ) AS base
+
+    INNER JOIN cps_subcategoria_negocio AS subcat
+        ON CONVERT(TRIM(subcat.nombre) USING utf8mb4)
+           COLLATE utf8mb4_unicode_ci = base.nombre_buscar
+
+    INNER JOIN cps_categoria_negocio AS catneg
+        ON subcat.id_categoria_negocio = catneg.id
+
+    INNER JOIN cps_unidad_negocio AS unidad
+        ON unidad.id_subcategoria_negocio = subcat.id
+
+    INNER JOIN cps_subunidad_negocio AS subunidad
+        ON subunidad.id_unidad_negocio = unidad.id
+
+    WHERE subunidad.estatus = 1
+
+    UNION ALL
+
+    SELECT
+        2 AS orden_grupo,
+        0 AS orden_item,
+        CONVERT(p.nombrepaquete USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS orden_paquete,
+        pr.id AS orden_regla,
+        CONVERT(pi.nombreinv USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS orden_producto,
+        pi.idproductoinv,
+        CONVERT(pi.nombreinv USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS producto,
+        CONVERT(catneg.nombre USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS categoria_negocio,
+        CONVERT(subcat.nombre USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS subcategoria_negocio,
+        CONVERT(unidad.nombre USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS unidad_negocio,
+        CONVERT(subunidad.nombre USING utf8mb4)
+            COLLATE utf8mb4_unicode_ci AS subunidad_negocio
+    FROM paquetes AS p
+
+    INNER JOIN paquete_reglas AS pr
+        ON pr.paquete_id = p.idpaquete
+
+    INNER JOIN regla_productos AS rp
+        ON rp.paqueteregla_id = pr.id
+
+    INNER JOIN productosinv AS pi
+        ON pi.idproductoinv = rp.producto_id
+
+    INNER JOIN categoriapaquete AS cat
+        ON cat.idcategoriapaquete = p.idcategoriapaquete
+
+    INNER JOIN cps_subunidad_negocio AS subunidad
+        ON cat.id_subunidad_negocio = subunidad.id
+
+    INNER JOIN cps_unidad_negocio AS unidad
+        ON subunidad.id_unidad_negocio = unidad.id
+
+    INNER JOIN cps_subcategoria_negocio AS subcat
+        ON subcat.id = unidad.id_subcategoria_negocio
+
+    INNER JOIN cps_categoria_negocio AS catneg
+        ON subcat.id_categoria_negocio = catneg.id
+
+    WHERE subunidad.estatus = 1
+) AS listado
+
+ORDER BY
+    orden_grupo,
+    orden_item,
+    orden_paquete,
+    orden_regla,
+    orden_producto;
