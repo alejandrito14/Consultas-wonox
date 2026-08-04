@@ -1,0 +1,55 @@
+SET @fecha_inicio = '2025-01-01';
+SET @fecha_fin    = '2026-08-04';
+
+SELECT *
+FROM (
+
+    /* =========================
+       1) TPV / COMANDAS
+       Incluye usuarios e invitados
+       Una línea por comanda
+       ========================= */
+    SELECT
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+        CONCAT('COMANDA #', c.folio) AS producto_debe,
+        'TPV' AS unidad_negocio,
+        DATE(c.creado_en) AS fecha_adeudo,
+        DATEDIFF(CURDATE(), DATE(c.creado_en)) AS dias_de_adeudo,
+        SUM(ci.costototal) AS monto_adeudo
+    FROM comandas c
+    INNER JOIN comanda_item ci
+        ON ci.id_comanda = c.id_comanda
+    LEFT JOIN usuarios u
+        ON u.idusuarios = c.id_usuario
+    LEFT JOIN bdcentralwon.usuarios_central uc
+        ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados i
+        ON i.id = c.id_invitado
+    WHERE c.estado_pago IN ('pendiente', 'cobrando')
+      AND c.creado_en >= CONCAT(@fecha_inicio, ' 00:00:00')
+      AND c.creado_en < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+      AND ci.estatus = 1
+    GROUP BY
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT('INV-', i.id)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END,
+        CASE
+            WHEN c.id_invitado IS NOT NULL THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END,
+        c.id_comanda,
+        c.folio,
+        DATE(c.creado_en)
+
+  
+) AS reporte_pendientes
+WHERE monto_adeudo > 0
+ORDER BY unidad_negocio, nombre_completo, fecha_adeudo;
