@@ -1,0 +1,37 @@
+SELECT
+    uc.idusuarios AS id_cliente,
+
+    CONCAT_WS(
+        ' ',
+        uc.nombre,
+        uc.paterno,
+        uc.materno
+    ) AS nombre_cliente,
+
+    n.nivel AS nivel,
+
+		uc.fechanacimiento,
+    TIMESTAMPDIFF(
+        YEAR,
+        STR_TO_DATE(uc.fechanacimiento, '%Y-%m-%d'),
+        CURDATE()
+    ) AS edad,
+
+    uc.sexo AS sexo
+
+FROM bdcentralwon.usuarios_central uc
+
+INNER JOIN bdwon144.usuarios u
+    ON u.idusuarios = uc.idusuarios
+
+LEFT JOIN bdcentralwon.deportenivelusuario dnu
+    ON dnu.idusuario = uc.idusuarios
+
+LEFT JOIN bdcentralwon.nivel n
+    ON n.idnivel = dnu.idnivel
+
+LEFT JOIN bdcentralwon.deporte d
+    ON d.iddeporte = dnu.iddeporte
+
+WHERE uc.estatus = 1
+ORDER BY id_cliente;
