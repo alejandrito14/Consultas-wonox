@@ -1,0 +1,88 @@
+SET SESSION group_concat_max_len = 1000000;
+
+SELECT GROUP_CONCAT(
+    CONCAT(
+        'COUNT(DISTINCT CASE WHEN r.idzona = ',
+        idzona,
+        ' THEN r.id END) AS `',
+        REPLACE(nombre, '`', '``'),
+        '`'
+    )
+    ORDER BY idzona
+    SEPARATOR ', '
+) INTO @columnas
+FROM bdwon144.zonas;
+
+SET @sql = CONCAT('
+SELECT
+    uc.idusuarios AS id_cliente,
+
+    CONCAT_WS(
+        '' '',
+        uc.nombre,
+        uc.paterno,
+        uc.materno
+    ) AS nombrealumno,
+			uc.codigopais,
+		uc.celular,
+
+    COALESCE(MAX(n.nivel), ''Amateur'') AS nivel,
+
+    uc.fechanacimiento,
+
+    TIMESTAMPDIFF(
+        YEAR,
+        STR_TO_DATE(uc.fechanacimiento, ''%Y-%m-%d''),
+        CURDATE()
+    ) AS edad,
+
+    uc.sexo,
+
+    COUNT(DISTINCT r.id) AS total_reservaciones,
+
+    ', @columnas, '
+
+FROM bdcentralwon.usuarios_central AS uc
+
+INNER JOIN bdwon144.usuarios AS u
+    ON u.idusuarios = uc.idusuarios
+
+INNER JOIN bdwon144.reservaciones AS r
+    ON r.idusuario = uc.idusuarios
+    AND r.estatus <> 3
+
+INNER JOIN bdwon144.zonas AS z
+    ON z.idzona = r.idzona
+
+LEFT JOIN bdcentralwon.deportenivelusuario AS dnu
+    ON dnu.idusuario = uc.idusuarios
+
+LEFT JOIN bdcentralwon.nivel AS n
+    ON n.idnivel = dnu.idnivel
+
+LEFT JOIN bdcentralwon.deporte AS d
+    ON d.iddeporte = dnu.iddeporte
+
+WHERE uc.estatus = 1
+  AND EXISTS (
+      SELECT 1
+      FROM bdwon144.pagos AS p
+      WHERE p.id_reservacion = r.id
+        AND p.pagado = 1
+  )
+
+GROUP BY
+    uc.idusuarios,
+    uc.nombre,
+    uc.paterno,
+    uc.materno,
+    uc.fechanacimiento,
+    uc.sexo
+
+ORDER BY
+    nombrealumno
+');
+
+PREPARE consulta FROM @sql;
+EXECUTE consulta;
+DEALLOCATE PREPARE consulta;

@@ -8,7 +8,7 @@ SELECT
         uc.materno
     ) AS nombre_cliente,
 
-    n.nivel AS nivel,
+    COALESCE(n.nivel, 'Amateur') AS nivel,
 
 		uc.fechanacimiento,
     TIMESTAMPDIFF(
