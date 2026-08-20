@@ -1,0 +1,87 @@
+SET SESSION group_concat_max_len = 1000000;
+
+SELECT GROUP_CONCAT(
+    CONCAT(
+        'COUNT(DISTINCT CASE
+            WHEN DATE_FORMAT(r.fecha, ''%Y-%m'') = ''',
+        mes,
+        ''' AND p.id_reservacion IS NOT NULL
+            THEN r.id
+        END) AS `',
+        mes,
+        '`'
+    )
+    ORDER BY mes
+    SEPARATOR ', '
+)
+INTO @columnas
+FROM (
+    SELECT DISTINCT
+        DATE_FORMAT(fecha, '%Y-%m') AS mes
+    FROM bdwon144.reservaciones
+    WHERE fecha IS NOT NULL
+      AND estatus <> 3
+) AS meses;
+
+SET @sql = CONCAT(
+'SELECT
+    uc.idusuarios AS id_cliente,
+    CONCAT_WS('' '', uc.nombre, uc.paterno, uc.materno) AS nombrealumno,
+    uc.codigopais,
+    uc.celular,
+    COALESCE(MAX(n.nivel), ''Amateur'') AS nivel,
+    uc.fechanacimiento,
+    TIMESTAMPDIFF(
+        YEAR,
+        STR_TO_DATE(uc.fechanacimiento, ''%Y-%m-%d''),
+        CURDATE()
+    ) AS edad,
+    uc.sexo,
+
+    COUNT(DISTINCT CASE
+        WHEN p.id_reservacion IS NOT NULL THEN r.id
+    END) AS total_reservaciones,
+
+    ', COALESCE(@columnas, '0 AS `sin_meses`'), '
+
+FROM bdcentralwon.usuarios_central AS uc
+
+INNER JOIN bdwon144.usuarios AS u
+    ON u.idusuarios = uc.idusuarios
+
+LEFT JOIN bdwon144.reservaciones AS r
+    ON r.idusuario = uc.idusuarios
+    AND r.estatus <> 3
+
+LEFT JOIN bdwon144.pagos AS p
+    ON p.id_reservacion = r.id
+    AND p.pagado = 1
+
+LEFT JOIN bdcentralwon.deportenivelusuario AS dnu
+    ON dnu.idusuario = uc.idusuarios
+
+LEFT JOIN bdcentralwon.nivel AS n
+    ON n.idnivel = dnu.idnivel
+
+LEFT JOIN bdcentralwon.deporte AS d
+    ON d.iddeporte = dnu.iddeporte
+
+WHERE uc.estatus = 1
+  AND TRIM(CONCAT_WS('' '', uc.nombre, uc.paterno, uc.materno)) <> ''''
+
+GROUP BY
+    uc.idusuarios,
+    uc.nombre,
+    uc.paterno,
+    uc.materno,
+    uc.fechanacimiento,
+    uc.sexo,
+    uc.codigopais,
+    uc.celular
+
+ORDER BY nombrealumno'
+);
+
+PREPARE consulta FROM @sql;
+EXECUTE consulta;
+DEALLOCATE PREPARE consulta;
