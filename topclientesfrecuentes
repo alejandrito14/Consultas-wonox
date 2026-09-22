@@ -1,0 +1,148 @@
+SET @fecha_inicio = '2026-09-01';
+SET @fecha_fin    = '2026-09-22';
+
+WITH actividades AS (
+
+    /* Reservas de cancha */
+    SELECT
+        r.idusuario AS cliente_id,
+        'Reservas' AS tipo,
+        r.id AS actividad_id
+    FROM reservaciones r
+    WHERE r.idusuario IS NOT NULL
+      AND r.fecha BETWEEN @fecha_inicio AND @fecha_fin
+      AND COALESCE(r.estatus, 0) <> 3
+
+    UNION ALL
+
+    /* Clases y academias */
+    SELECT
+        us.idusuarios AS cliente_id,
+
+        CASE
+            WHEN LOWER(TRIM(sc.nombre)) = 'clases'
+                THEN 'Clases'
+            WHEN LOWER(TRIM(sc.nombre)) = 'academias'
+                THEN 'Academias'
+        END AS tipo,
+
+        hs.idhorarioservicio AS actividad_id
+
+    FROM usuarios_servicios us
+
+    INNER JOIN servicios s
+        ON s.idservicio = us.idservicio
+
+    INNER JOIN horariosservicio hs
+        ON hs.idservicio = s.idservicio
+
+    INNER JOIN cps_subunidad_negocio su
+        ON su.id = s.id_subunidad_negocio
+
+    INNER JOIN cps_unidad_negocio un
+        ON un.id = su.id_unidad_negocio
+
+    INNER JOIN cps_subcategoria_negocio sc
+        ON sc.id = un.id_subcategoria_negocio
+
+    LEFT JOIN usuarioscoachs ucoach
+        ON ucoach.idusuarios_servicios = us.idusuarios_servicios
+
+    WHERE hs.fecha BETWEEN @fecha_inicio AND @fecha_fin
+      AND LOWER(TRIM(sc.nombre)) IN ('clases', 'academias')
+      AND COALESCE(us.cancelacion, 0) = 0
+      AND COALESCE(us.estatus, 0) NOT IN (2, 3)
+      AND COALESCE(s.canceladoservicio, 0) = 0
+      AND ucoach.idusuarioscoachs IS NULL
+
+    UNION ALL
+
+    /* Compras TPV */
+    SELECT DISTINCT
+        o.id_usuario AS cliente_id,
+        'TPV' AS tipo,
+        o.id_comanda AS actividad_id
+
+    FROM comandas o
+
+    INNER JOIN pagos p
+        ON p.idpago = o.id_pago
+
+    LEFT JOIN notapago_descripcion npd
+        ON npd.idpago = p.idpago
+
+    LEFT JOIN cps_subunidad_negocio su_tpv
+        ON su_tpv.id = npd.id_subunidad_negocio
+
+    LEFT JOIN cps_unidad_negocio un_tpv
+        ON un_tpv.id = su_tpv.id_unidad_negocio
+
+    LEFT JOIN cps_subcategoria_negocio sc_tpv
+        ON sc_tpv.id = un_tpv.id_subcategoria_negocio
+
+    WHERE o.id_usuario IS NOT NULL
+      AND o.estado_pago = 'pagada'
+      AND CAST(
+            COALESCE(o.pagada_en, o.creado_en)
+          AS DATE
+      ) BETWEEN @fecha_inicio AND @fecha_fin
+      AND (
+            p.tipo = 6
+            OR LOWER(TRIM(sc_tpv.nombre)) = 'tpv'
+          )
+),
+
+resumen AS (
+    SELECT
+        cliente_id,
+
+        COUNT(DISTINCT CASE
+            WHEN tipo = 'Reservas' THEN actividad_id
+        END) AS reservas,
+
+        COUNT(DISTINCT CASE
+            WHEN tipo = 'Clases' THEN actividad_id
+        END) AS clases,
+
+        COUNT(DISTINCT CASE
+            WHEN tipo = 'Academias' THEN actividad_id
+        END) AS academias,
+
+        COUNT(DISTINCT CASE
+            WHEN tipo = 'TPV' THEN actividad_id
+        END) AS tpv
+
+    FROM actividades
+    GROUP BY cliente_id
+)
+
+SELECT
+    r.cliente_id AS `Cliente ID`,
+
+    CONCAT_WS(
+        ' ',
+        uc.nombre,
+        uc.paterno,
+        uc.materno
+    ) AS `Cliente`,
+
+    r.reservas AS `Reservas`,
+    r.clases AS `Clases`,
+    r.academias AS `Academias`,
+    r.tpv AS `TPV`,
+
+    (
+        r.reservas +
+        r.clases +
+        r.academias +
+        r.tpv
+    ) AS `Total actividades`
+
+FROM resumen r
+
+INNER JOIN bdcentralwon.usuarios_central uc
+    ON uc.idusuarios = r.cliente_id
+
+ORDER BY
+    `Total actividades` DESC,
+    `Cliente` limit 20
