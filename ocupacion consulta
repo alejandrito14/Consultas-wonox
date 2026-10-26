@@ -1,0 +1,548 @@
+SET @fecha_inicio = '2026-01-01';
+SET @fecha_fin = '2026-10-12';
+
+SELECT
+    CAST(@fecha_inicio AS DATE) AS fecha_inicio,
+    CAST(@fecha_fin AS DATE) AS fecha_fin,
+
+    z.nombre AS cancha,
+
+    ROUND(COALESCE(d.horas_disponibles, 0), 2)
+        AS horas_disponibles,
+
+    ROUND(COALESCE(o.horas_ocupadas, 0), 2)
+        AS horas_ocupadas,
+
+    ROUND(COALESCE(b.horas_bloqueadas, 0), 2)
+        AS horas_bloquedas,
+
+    ROUND(
+        GREATEST(
+            COALESCE(d.horas_disponibles, 0)
+            - COALESCE(o.horas_ocupadas, 0)
+            - COALESCE(b.horas_bloqueadas, 0),
+            0
+        ),
+        2
+    ) AS horas_libres,
+
+    ROUND(
+        CASE
+            WHEN (
+                COALESCE(d.horas_disponibles, 0)
+                - COALESCE(b.horas_bloqueadas, 0)
+            ) > 0
+            THEN (
+                COALESCE(o.horas_ocupadas, 0)
+                / (
+                    d.horas_disponibles
+                    - COALESCE(b.horas_bloqueadas, 0)
+                )
+            ) * 100
+            ELSE 0
+        END,
+        2
+    ) AS ocupacion_porcentaje,
+
+    ROUND(COALESCE(o.reservas_horas, 0), 2)
+        AS reservas_horas,
+
+    COALESCE(o.reservas_eventos, 0)
+        AS reservas_eventos,
+
+    ROUND(COALESCE(o.clases_horas, 0), 2)
+        AS clases_horas,
+
+    COALESCE(o.clases_eventos, 0)
+        AS clases_eventos,
+
+    ROUND(COALESCE(o.academias_horas, 0), 2)
+        AS academias_horas,
+
+    COALESCE(o.academias_eventos, 0)
+        AS academias_eventos,
+
+    ROUND(COALESCE(b.horas_bloqueadas, 0), 2)
+        AS bloqueos_horas,
+
+    COALESCE(b.bloqueos_eventos, 0)
+        AS bloqueos_eventos,
+
+    COALESCE(detalle.detalle_ocupacion, JSON_ARRAY())
+        AS detalle_ocupacion
+
+FROM zonas AS z
+
+LEFT JOIN (
+    SELECT
+        z2.idzona,
+
+        MAX(
+            CASE
+                WHEN ch.lunes_activado = 1 THEN
+                    TIME_TO_SEC(
+                        TIMEDIFF(ch.lunes_final, ch.lunes_inicio)
+                    ) / 3600
+                    *
+                    GREATEST(
+                        0,
+                        FLOOR(
+                            (
+                                DATEDIFF(r.fecha_fin, r.fecha_inicio)
+                                - MOD(
+                                    7 - WEEKDAY(r.fecha_inicio),
+                                    7
+                                )
+                            ) / 7
+                        ) + 1
+                    )
+                ELSE 0
+            END
+
+            +
+
+            CASE
+                WHEN ch.martes_activado = 1 THEN
+                    TIME_TO_SEC(
+                        TIMEDIFF(ch.martes_final, ch.martes_inicio)
+                    ) / 3600
+                    *
+                    GREATEST(
+                        0,
+                        FLOOR(
+                            (
+                                DATEDIFF(r.fecha_fin, r.fecha_inicio)
+                                - MOD(
+                                    8 - WEEKDAY(r.fecha_inicio),
+                                    7
+                                )
+                            ) / 7
+                        ) + 1
+                    )
+                ELSE 0
+            END
+
+            +
+
+            CASE
+                WHEN ch.miercoles_activado = 1 THEN
+                    TIME_TO_SEC(
+                        TIMEDIFF(ch.miercoles_final, ch.miercoles_inicio)
+                    ) / 3600
+                    *
+                    GREATEST(
+                        0,
+                        FLOOR(
+                            (
+                                DATEDIFF(r.fecha_fin, r.fecha_inicio)
+                                - MOD(
+                                    9 - WEEKDAY(r.fecha_inicio),
+                                    7
+                                )
+                            ) / 7
+                        ) + 1
+                    )
+                ELSE 0
+            END
+
+            +
+
+            CASE
+                WHEN ch.jueves_activado = 1 THEN
+                    TIME_TO_SEC(
+                        TIMEDIFF(ch.jueves_final, ch.jueves_inicio)
+                    ) / 3600
+                    *
+                    GREATEST(
+                        0,
+                        FLOOR(
+                            (
+                                DATEDIFF(r.fecha_fin, r.fecha_inicio)
+                                - MOD(
+                                    10 - WEEKDAY(r.fecha_inicio),
+                                    7
+                                )
+                            ) / 7
+                        ) + 1
+                    )
+                ELSE 0
+            END
+
+            +
+
+            CASE
+                WHEN ch.viernes_activado = 1 THEN
+                    TIME_TO_SEC(
+                        TIMEDIFF(ch.viernes_final, ch.viernes_inicio)
+                    ) / 3600
+                    *
+                    GREATEST(
+                        0,
+                        FLOOR(
+                            (
+                                DATEDIFF(r.fecha_fin, r.fecha_inicio)
+                                - MOD(
+                                    11 - WEEKDAY(r.fecha_inicio),
+                                    7
+                                )
+                            ) / 7
+                        ) + 1
+                    )
+                ELSE 0
+            END
+
+            +
+
+            CASE
+                WHEN ch.sabado_activado = 1 THEN
+                    TIME_TO_SEC(
+                        TIMEDIFF(ch.sabado_final, ch.sabado_inicio)
+                    ) / 3600
+                    *
+                    GREATEST(
+                        0,
+                        FLOOR(
+                            (
+                                DATEDIFF(r.fecha_fin, r.fecha_inicio)
+                                - MOD(
+                                    12 - WEEKDAY(r.fecha_inicio),
+                                    7
+                                )
+                            ) / 7
+                        ) + 1
+                    )
+                ELSE 0
+            END
+
+            +
+
+            CASE
+                WHEN ch.domingo_activado = 1 THEN
+                    TIME_TO_SEC(
+                        TIMEDIFF(ch.domingo_final, ch.domingo_inicio)
+                    ) / 3600
+                    *
+                    GREATEST(
+                        0,
+                        FLOOR(
+                            (
+                                DATEDIFF(r.fecha_fin, r.fecha_inicio)
+                                - MOD(
+                                    13 - WEEKDAY(r.fecha_inicio),
+                                    7
+                                )
+                            ) / 7
+                        ) + 1
+                    )
+                ELSE 0
+            END
+        ) AS horas_disponibles
+
+    FROM zonas AS z2
+
+    INNER JOIN club_horario AS ch
+        ON 1 = 1
+
+    CROSS JOIN (
+        SELECT
+            CAST(@fecha_inicio AS DATE) AS fecha_inicio,
+            CAST(@fecha_fin AS DATE) AS fecha_fin
+    ) AS r
+
+    WHERE z2.cancha_activa = 1
+
+    GROUP BY z2.idzona
+) AS d
+    ON d.idzona = z.idzona
+
+LEFT JOIN (
+    SELECT
+        eventos.idzona,
+
+        SUM(eventos.horas) AS horas_ocupadas,
+
+        SUM(
+            CASE
+                WHEN eventos.tipo_evento = 'reservas'
+                THEN eventos.horas
+                ELSE 0
+            END
+        ) AS reservas_horas,
+
+        SUM(
+            CASE
+                WHEN eventos.tipo_evento = 'reservas'
+                THEN 1
+                ELSE 0
+            END
+        ) AS reservas_eventos,
+
+        SUM(
+            CASE
+                WHEN eventos.tipo_evento = 'clases'
+                THEN eventos.horas
+                ELSE 0
+            END
+        ) AS clases_horas,
+
+        SUM(
+            CASE
+                WHEN eventos.tipo_evento = 'clases'
+                THEN 1
+                ELSE 0
+            END
+        ) AS clases_eventos,
+
+        SUM(
+            CASE
+                WHEN eventos.tipo_evento = 'academias'
+                THEN eventos.horas
+                ELSE 0
+            END
+        ) AS academias_horas,
+
+        SUM(
+            CASE
+                WHEN eventos.tipo_evento = 'academias'
+                THEN 1
+                ELSE 0
+            END
+        ) AS academias_eventos
+
+    FROM (
+        SELECT
+            r.idzona,
+            'reservas' AS tipo_evento,
+
+            TIMESTAMPDIFF(
+                MINUTE,
+                STR_TO_DATE(
+                    CONCAT(LEFT(r.fecha, 10), ' ', r.hora_inicial),
+                    '%Y-%m-%d %H:%i'
+                ),
+                STR_TO_DATE(
+                    CONCAT(LEFT(r.fecha, 10), ' ', r.hora_final),
+                    '%Y-%m-%d %H:%i'
+                )
+            ) / 60 AS horas
+
+        FROM reservaciones AS r
+
+        WHERE STR_TO_DATE(
+                  LEFT(r.fecha, 10),
+                  '%Y-%m-%d'
+              )
+              BETWEEN CAST(@fecha_inicio AS DATE)
+                  AND CAST(@fecha_fin AS DATE)
+
+          AND COALESCE(r.estatus, 0) <> 3
+
+        UNION ALL
+
+        SELECT
+            hs.idzona,
+
+            CASE
+                WHEN LOWER(sc.nombre) LIKE '%clase%'
+                    THEN 'clases'
+                WHEN LOWER(sc.nombre) LIKE '%academ%'
+                    THEN 'academias'
+                ELSE 'otros'
+            END AS tipo_evento,
+
+            TIMESTAMPDIFF(
+                MINUTE,
+                STR_TO_DATE(
+                    CONCAT(LEFT(hs.fecha, 10), ' ', hs.horainicial),
+                    '%Y-%m-%d %H:%i'
+                ),
+                STR_TO_DATE(
+                    CONCAT(LEFT(hs.fecha, 10), ' ', hs.horafinal),
+                    '%Y-%m-%d %H:%i'
+                )
+            ) / 60 AS horas
+
+        FROM horariosservicio AS hs
+
+        INNER JOIN servicios AS s
+            ON s.idservicio = hs.idservicio
+
+        INNER JOIN cps_subunidad_negocio AS su
+            ON su.id = s.id_subunidad_negocio
+
+        INNER JOIN cps_unidad_negocio AS u
+            ON u.id = su.id_unidad_negocio
+
+        INNER JOIN cps_subcategoria_negocio AS sc
+            ON sc.id = u.id_subcategoria_negocio
+
+        WHERE STR_TO_DATE(
+                  LEFT(hs.fecha, 10),
+                  '%Y-%m-%d'
+              )
+              BETWEEN CAST(@fecha_inicio AS DATE)
+                  AND CAST(@fecha_fin AS DATE)
+
+          AND hs.idservicio IS NOT NULL
+          AND COALESCE(s.estatus, 0) = 1
+          AND COALESCE(s.canceladoservicio, 0) = 0
+    ) AS eventos
+
+    GROUP BY eventos.idzona
+) AS o
+    ON o.idzona = z.idzona
+
+LEFT JOIN (
+    SELECT
+        eventos.idzona,
+
+        JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'cancha', zonas_detalle.nombre,
+                'codigo', eventos.codigo,
+                'fecha', eventos.fecha,
+                'hora_inicio', eventos.hora_inicio,
+                'hora_fin', eventos.hora_fin,
+                'id', eventos.id_evento,
+                'idservicio', eventos.id_servicio,
+                'servicio', eventos.servicio,
+                'tipo', eventos.tipo_evento
+            )
+        ) AS detalle_ocupacion
+
+    FROM (
+        SELECT
+            r.idzona,
+
+            'Reserva' AS tipo_evento,
+
+            r.id AS id_evento,
+            r.id AS id_reservacion,
+
+            LEFT(r.fecha, 10) AS fecha,
+            r.hora_inicial AS hora_inicio,
+            r.hora_final AS hora_fin,
+
+            TIMESTAMPDIFF(
+                MINUTE,
+                STR_TO_DATE(
+                    CONCAT(LEFT(r.fecha, 10), ' ', r.hora_inicial),
+                    '%Y-%m-%d %H:%i'
+                ),
+                STR_TO_DATE(
+                    CONCAT(LEFT(r.fecha, 10), ' ', r.hora_final),
+                    '%Y-%m-%d %H:%i'
+                )
+            ) / 60 AS horas,
+
+            r.codigo_reserva AS codigo,
+            NULL AS id_servicio,
+            NULL AS servicio
+
+        FROM reservaciones AS r
+
+        WHERE STR_TO_DATE(
+                  LEFT(r.fecha, 10),
+                  '%Y-%m-%d'
+              )
+              BETWEEN CAST(@fecha_inicio AS DATE)
+                  AND CAST(@fecha_fin AS DATE)
+
+          AND COALESCE(r.estatus, 0) <> 3
+
+        UNION ALL
+
+        SELECT
+            hs.idzona,
+
+            CASE
+                WHEN LOWER(sc.nombre) LIKE '%clase%'
+                    THEN 'Clase'
+                WHEN LOWER(sc.nombre) LIKE '%academ%'
+                    THEN 'Academia'
+                ELSE 'Otro'
+            END AS tipo_evento,
+
+            hs.idhorarioservicio AS id_evento,
+            hs.idreservacion,
+
+            LEFT(hs.fecha, 10) AS fecha,
+            hs.horainicial AS hora_inicio,
+            hs.horafinal AS hora_fin,
+
+            TIMESTAMPDIFF(
+                MINUTE,
+                STR_TO_DATE(
+                    CONCAT(LEFT(hs.fecha, 10), ' ', hs.horainicial),
+                    '%Y-%m-%d %H:%i'
+                ),
+                STR_TO_DATE(
+                    CONCAT(LEFT(hs.fecha, 10), ' ', hs.horafinal),
+                    '%Y-%m-%d %H:%i'
+                )
+            ) / 60 AS horas,
+
+            s.codigo,
+            hs.idservicio AS id_servicio,
+            s.titulo AS servicio
+
+        FROM horariosservicio AS hs
+
+        INNER JOIN servicios AS s
+            ON s.idservicio = hs.idservicio
+
+        INNER JOIN cps_subunidad_negocio AS su
+            ON su.id = s.id_subunidad_negocio
+
+        INNER JOIN cps_unidad_negocio AS u
+            ON u.id = su.id_unidad_negocio
+
+        INNER JOIN cps_subcategoria_negocio AS sc
+            ON sc.id = u.id_subcategoria_negocio
+
+        WHERE STR_TO_DATE(
+                  LEFT(hs.fecha, 10),
+                  '%Y-%m-%d'
+              )
+              BETWEEN CAST(@fecha_inicio AS DATE)
+                  AND CAST(@fecha_fin AS DATE)
+
+          AND hs.idservicio IS NOT NULL
+          AND COALESCE(s.estatus, 0) = 1
+          AND COALESCE(s.canceladoservicio, 0) = 0
+    ) AS eventos
+
+    INNER JOIN zonas AS zonas_detalle
+        ON zonas_detalle.idzona = eventos.idzona
+
+    GROUP BY eventos.idzona
+) AS detalle
+    ON detalle.idzona = z.idzona
+
+LEFT JOIN (
+    SELECT
+        b.id_zona AS idzona,
+
+        COUNT(*) AS bloqueos_eventos,
+
+        SUM(
+            TIMESTAMPDIFF(
+                MINUTE,
+                b.hora_inicial,
+                b.hora_final
+            ) / 60
+        ) AS horas_bloqueadas
+
+    FROM bloqueos AS b
+
+    WHERE DATE(b.fecha)
+          BETWEEN CAST(@fecha_inicio AS DATE)
+              AND CAST(@fecha_fin AS DATE)
+
+    GROUP BY b.id_zona
+) AS b
+    ON b.idzona = z.idzona
+
+WHERE z.cancha_activa = 1
+
+ORDER BY z.nombre
