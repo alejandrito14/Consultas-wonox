@@ -1,0 +1,198 @@
+SET @fecha_inicio = '2026-08-01';
+SET @fecha_fin = CURDATE();
+SET @codserv = 144;
+
+SELECT
+    @codserv AS codserv,
+    (
+        SELECT e.nombre
+        FROM bdcentralwon.empresa AS e
+        WHERE e.codserv = @codserv
+          AND e.estatus = 1
+        LIMIT 1
+    ) AS nombre_club,
+    reservas.idcliente,
+    reservas.nombre_completo,
+    reservas.folio_notapago,
+    reservas.producto,
+    reservas.cancha,
+    reservas.horas_rentadas,
+    reservas.fecha_reserva,
+    reservas.estatus_pago,
+    reservas.fecha_adeudo,
+    reservas.fecha_pago,
+    reservas.monto_bruto,
+    reservas.descuento_aplicado,
+    reservas.monto_neto
+FROM (
+    /* Reservas pagadas */
+    SELECT
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL
+                THEN CONCAT('INV-', COALESCE(p.id_invitado, np.id_invitado))
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+
+        CASE
+            WHEN COALESCE(p.id_invitado, np.id_invitado) IS NOT NULL
+                THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+
+        np.folio AS folio_notapago,
+
+        CASE
+            WHEN p.tipo = 5
+                THEN CONCAT('Reserva Autoplaza ', r.codigo_reserva)
+            ELSE CONCAT('Reserva ', r.codigo_reserva)
+        END AS producto,
+
+        z.nombre AS cancha,
+
+        ROUND(
+            TIMESTAMPDIFF(
+                SECOND,
+                TIMESTAMP(r.fecha, r.hora_inicial),
+                TIMESTAMP(
+                    CASE
+                        WHEN r.hora_final < r.hora_inicial
+                            THEN DATE_ADD(r.fecha, INTERVAL 1 DAY)
+                        ELSE r.fecha
+                    END,
+                    r.hora_final
+                )
+            ) / 3600,
+            2
+        ) AS horas_rentadas,
+
+        DATE(r.fecha) AS fecha_reserva,
+        'PAGADA' AS estatus_pago,
+        NULL AS fecha_adeudo,
+        DATE(np.fecha) AS fecha_pago,
+
+        SUM(CAST(nd.monto AS DECIMAL(12,2))) AS monto_bruto,
+        COALESCE(SUM(nda.monto_descontado), 0) AS descuento_aplicado,
+        SUM(CAST(nd.monto AS DECIMAL(12,2)))
+            - COALESCE(SUM(nda.monto_descontado), 0) AS monto_neto,
+
+        r.id AS orden_reserva
+
+    FROM pagos AS p
+    INNER JOIN reservaciones AS r
+        ON r.id = p.id_reservacion
+    INNER JOIN notapago_descripcion AS nd
+        ON nd.idpago = p.idpago
+    INNER JOIN notapago AS np
+        ON np.idnotapago = nd.idnotapago
+    LEFT JOIN notapago_descuento_aplicado AS nda
+        ON nda.idnotapago_descripcion = nd.idnotapago_descripcion
+    LEFT JOIN zonas AS z
+        ON z.idzona = r.idzona
+    LEFT JOIN usuarios AS u
+        ON u.idusuarios = p.idusuarios
+    LEFT JOIN bdcentralwon.usuarios_central AS uc
+        ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados AS i
+        ON i.id = COALESCE(p.id_invitado, np.id_invitado)
+
+    WHERE p.pagado = 1
+      AND p.estatus = 2
+      AND p.tipo IN (4, 5)
+      AND np.estatus = 1
+      AND r.fecha >= @fecha_inicio
+      AND r.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+
+    GROUP BY
+        r.id,
+        r.fecha,
+        r.hora_inicial,
+        r.hora_final,
+        r.codigo_reserva,
+        r.idzona,
+        p.tipo,
+        np.folio,
+        np.fecha,
+        p.id_invitado,
+        np.id_invitado,
+        i.nombre,
+        uc.idusuarios,
+        uc.nombre,
+        uc.paterno,
+        uc.materno,
+        z.nombre
+
+    UNION ALL
+
+    /* Reservas no pagadas */
+    SELECT
+        CASE
+            WHEN p.id_invitado IS NOT NULL
+                THEN CONCAT('INV-', p.id_invitado)
+            ELSE CAST(uc.idusuarios AS CHAR)
+        END AS idcliente,
+
+        CASE
+            WHEN p.id_invitado IS NOT NULL
+                THEN CONCAT(i.nombre, ' (invitado)')
+            ELSE CONCAT_WS(' ', uc.nombre, uc.paterno, uc.materno)
+        END AS nombre_completo,
+
+        NULL AS folio_notapago,
+
+        CASE
+            WHEN p.tipo = 5
+                THEN CONCAT('Reserva Autoplaza ', r.codigo_reserva)
+            ELSE CONCAT('Reserva ', r.codigo_reserva)
+        END AS producto,
+
+        z.nombre AS cancha,
+
+        ROUND(
+            TIMESTAMPDIFF(
+                SECOND,
+                TIMESTAMP(r.fecha, r.hora_inicial),
+                TIMESTAMP(
+                    CASE
+                        WHEN r.hora_final < r.hora_inicial
+                            THEN DATE_ADD(r.fecha, INTERVAL 1 DAY)
+                        ELSE r.fecha
+                    END,
+                    r.hora_final
+                )
+            ) / 3600,
+            2
+        ) AS horas_rentadas,
+
+        DATE(r.fecha) AS fecha_reserva,
+        'NO PAGADA' AS estatus_pago,
+        DATE(p.fechacreacion) AS fecha_adeudo,
+        NULL AS fecha_pago,
+
+        p.monto AS monto_bruto,
+        NULL AS descuento_aplicado,
+        NULL AS monto_neto,
+
+        r.id AS orden_reserva
+
+    FROM pagos AS p
+    INNER JOIN reservaciones AS r
+        ON r.id = p.id_reservacion
+    LEFT JOIN zonas AS z
+        ON z.idzona = r.idzona
+    LEFT JOIN usuarios AS u
+        ON u.idusuarios = p.idusuarios
+    LEFT JOIN bdcentralwon.usuarios_central AS uc
+        ON uc.idusuarios = u.idusuarios
+    LEFT JOIN invitados AS i
+        ON i.id = p.id_invitado
+
+    WHERE p.pagado = 0
+      AND p.estatus IN (0, 1)
+      AND p.tipo IN (4, 5)
+      AND r.fecha >= @fecha_inicio
+      AND r.fecha < DATE_ADD(@fecha_fin, INTERVAL 1 DAY)
+) AS reservas
+ORDER BY
+    reservas.fecha_reserva,
+    reservas.cancha,
+    reservas.orden_reserva;
